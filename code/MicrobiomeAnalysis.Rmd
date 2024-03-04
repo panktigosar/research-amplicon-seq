@@ -1,0 +1,474 @@
+---
+title: "Microbiome Analysis"
+author: "Pankti"
+date: "2024-03-03"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+Installing Libraries
+```{r, echo=F, message=F, warning=F, Installing Libraries}
+library(knitr)
+library(microbiome)
+library(dada2)
+library(DECIPHER)
+library(phyloseq)
+library(phangorn)
+library(gridExtra)
+library(ggplot2)
+```
+
+
+
+```{r echo=F, message=F, warning=F}
+set.seed(100)
+```
+
+
+
+```{r, echo=F, message=F, warning=F, Installing Libraries}
+miseq_path <- "../data/MiSeq_SOP/"
+# list.files(miseq_path)
+```
+
+Filter and Trim
+
+```{r echo=F, message=F, warning=F}
+# Sorting files with forward and reverse reads
+fnFs <- sort(list.files(miseq_path, pattern = "_R1_001.fastq")) # Forward reads
+fnRs <- sort(list.files(miseq_path, pattern = "_R2_001.fastq")) # Reverse reads
+
+# Extract sample names:
+sampleNames <- sapply(strsplit(fnFs, "_"), `[`, 1)
+
+# specifying full paths to the file lists:
+fnFs <- file.path(miseq_path, fnFs)
+fnRs <- file.path(miseq_path, fnRs)
+
+# quality of first 2 reads. # Most data shows trend of decreasing average quality towards end of the sequencing reads
+dada2::plotQualityProfile(fnFs[1:2])
+```
+
+
+
+```{r, echo=F, message=F, warning=F}
+dada2::plotQualityProfile(fnRs[1:2])
+```
+
+Here, the forward reads maintain high quality throughout, while the quality of the reverse reads drops significantly at about position 160. Therefore, we choose to truncate the forward reads at position 245, and the reverse reads at position 160. We also choose to trim the first 10 nucleotides of each read based on empirical observations across many Illumina datasets that these base positions are particularly likely to contain pathological errors.
+
+We define the filenames for the filtered fastq.gz files:
+
+```{r echo=F, message=F, warning=F}
+filt_path <- file.path(miseq_path, "filtered") # To keep filtered files in filtered directories
+if(!file_test("-d", filt_path)) dir.create(filt_path)
+filtFs <- file.path(filt_path, paste0(sampleNames, "_F_filt.fastq.gz"))
+filtRs <- file.path(filt_path, paste0(sampleNames, "_R_filt.fastq.gz"))
+```
+
+
+
+```{r, echo=F, message=F, warning=F}
+out <- dada2::filterAndTrim(fnFs, filtFs, fnRs, filtRs, truncLen = c(240, 160),
+                            maxN = 0, maxEE = c(2,2), truncQ = 2, rm.phix = TRUE,
+                            compress = T, multithread = T)
+# head(out)
+```
+# Infer Sequence variants
+After filtering, the typical amplicon bioinformatics workflow clusters sequencing reads into operational taxonomic units (OTUs): groups of sequencing reads that differ by less than a fixed dissimilarity threshhold. Here we instead use the high-resolution DADA2 method to to infer amplicon sequence variants (ASVs) exactly, without imposing any arbitrary threshhold, and thereby resolving variants that differ by as little as one nucleotide (Benjamin J Callahan et al. 2016).
+
+The sequence data is imported into R from demultiplexed fastq files (i.e. one fastq for each sample) and simultaneously dereplicated to remove redundancy. We name the resulting derep-class objects by their sample name.
+
+# Dereplication
+Dereplication combines all identical sequencing reads into into “unique sequences” with a corresponding “abundance”: the number of reads with that unique sequence. Dereplication substantially reduces computation time by eliminating redundant comparisons.
+```{r echo=F, message=F, warning=F}
+derepFs <- dada2::derepFastq(filtFs, verbose = T)
+derepRs <- dada2::derepFastq(filtRs, verbose = T)
+
+# Name the derep class objects by the sample names
+names(derepFs) <- sampleNames
+names(derepRs) <- sampleNames
+```
+The DADA2 method relies on a parameterized model of substitution errors to distinguish sequencing errors from real biological variation. Because error rates can (and often do) vary substantially between sequencing runs and PCR protocols, the model parameters can be discovered from the data itself using a form of unsupervised learning in which sample inference is alternated with parameter estimation until both are jointly consistent.
+
+Parameter learning is computationally intensive, as it requires multiple iterations of the sequence inference algorithm, and therefore it is often useful to estimate the error rates from a (sufficiently large) subset of the data.
+```{r, echo=F, message=F, warning=F}
+errF <- dada2::learnErrors(filtFs, multithread = T)
+```
+
+
+
+```{r echo=F, message=F, warning=F}
+errR <- learnErrors(filtRs, multithread = T)
+```
+
+
+
+```{r, echo=F, message=F, warning=F}
+plotErrors(errF)
+plotErrors(errR)
+```
+
+In order to verify that the error rates have been reasonably well-estimated, we inspect the fit between the observed error rates (black points) and the fitted error rates (black lines) in Figure 1. These figures show the frequencies of each type of transition as a function of the quality.
+
+The DADA2 sequence inference method can run in two different modes: Independent inference by sample (pool=FALSE), and inference from the pooled sequencing reads from all samples (pool=TRUE). Independent inference has the advantage that computation time is linear in the number of samples, and memory requirements are flat with the number of samples. This allows scaling out to datasets of almost unlimited size. Pooled inference is more computationally taxing, and can become intractable for datasets of tens of millions of reads. However, pooling improves the detection of rare variants that were seen just once or twice in an individual sample but many times across all samples. As this dataset is not particularly large, we perform pooled inference. As of version 1.2, multithreading can now be activated with the arguments multithread = TRUE, which substantially speeds this step.
+
+```{r echo=F, message=F, warning=F}
+dadaFs <- dada(derepFs, err=errF, multithread = T)
+```
+
+
+
+```{r, echo=F, message=F, warning=F}
+dadaRs <- dada(derepRs, err=errR, multithread = T)
+```
+
+Inspecting the dada class object returned by dada
+
+```{r echo=F, message=F, warning=F}
+dadaFs[[1]]
+```
+The DADA2 algorithm inferred 128 real sequence variants from the 1979 unique sequences in the first sample. The dada-class object contains multiple diagnostics about the quality of each inferred sequence variant(see help("dada-class") for some info).
+
+The DADA2 sequence inference step removed (nearly) all substitution and indel errors from the data (Benjamin J Callahan et al. 2016). We now merge together the inferred forward and reverse sequences, removing paired sequences that do not perfectly overlap as a final control against residual errors.
+
+# Construct sequence table and remove chimeras:
+he DADA2 method produces a sequence table that is a higher-resolution analogue of the common “OTU table”, i.e. a sample by sequence feature table valued by the number of times each sequence was observed in each sample.
+```{r, echo=F, message=F, warning=F}
+mergers <- mergePairs(dadaFs, derepFs, dadaRs, derepRs)
+```
+
+
+
+```{r echo=F, message=F, warning=F}
+seqtabAll <- makeSequenceTable(mergers[!grepl("Mock", names(mergers))])
+table(nchar(getSequences(seqtabAll)))
+```
+Notably, chimeras have not yet been removed. The error model in the sequence inference algorithm does not include a chimera component, and therefore we expect this sequence table to include many chimeric sequences. We now remove chimeric sequences by comparing each inferred sequence to the others in the table, and removing those that can be reproduced by stitching together two more abundant sequences.
+```{r, echo=F, message=F, warning=F}
+seqtabNoC <- removeBimeraDenovo(seqtabAll)
+```
+Although exact numbers vary substantially by experimental condition, it is typical that chimeras comprise a substantial fraction of inferred sequence variants, but only a small fraction of all reads. That is what is observed here chimeras make up about 22% of the inferred sequence variants, but those variants account for only about 4% of the total sequence reads.
+
+# Assign Taxonomy:
+One of the benefits of using well-classified marker loci like the 16S rRNA gene is the ability to taxonomically classify the sequence variants. The dada2 package implements the naive Bayesian classifier method for this purpose (Wang et al. 2007). This classifier compares sequence variants to a training set of classified sequences, and here we use the RDP v16 training set (Cole et al. 2009).
+
+The dada2 tutorial website contains formatted training fastas for the RDP training set, GreenGenes clustered at 97% identity, and the Silva reference database available. For fungal taxonomy, the General Fasta release files from the [UNITE ITS database](https://unite.ut.ee/repository.php) can be used as is. To follow this workflow, download the rdp_train_set_16.fa.gz file, and place it in the directory with the fastq files.
+```{r echo=F, message=F, warning=F}
+fastaRef <- "../data/MiSeq_SOP/rdp_train_set_16.fa.gz"
+taxTab <- assignTaxonomy(seqtabNoC, refFasta = fastaRef, multithread = T)
+unname(head(taxTab))
+```
+# Construct a Phylogenetic tree:
+Phylogenetic relatedness is commonly used to inform downstream analyses, especially the calculation of phylogeny-aware distances between microbial communities. The DADA2 sequence inference method is reference-free, so we must construct the phylogenetic tree relating the inferred sequence variants de novo. We begin by performing a multiple-alignment using the DECIPHER R package (Wright 2015).
+
+```{r, echo=F, message=F, warning=F}
+seqs <- getSequences(seqtabNoC)
+names(seqs) <- seqs
+alignment <- DECIPHER::AlignSeqs(DNAStringSet(seqs), anchor=NA, verbose = F)
+```
+The ```phangorn``` R package is then used to construct a phylogenetic tree. Here we first construct a neighbor-joining tree, and then fit a GTR+G+I (Generalized time-reversible with Gamma rate variation) maximum likelihood tree using the neighbor-joining tree as a starting point.
+```{r echo=F, message=F, warning=F}
+phangAlign <- phyDat(as(alignment, "matrix"), type = "DNA")
+dm <- dist.ml(phangAlign)
+treeNJ <- NJ(dm) 
+fit = pml(treeNJ, data = phangAlign)
+fitGTR <- update(fit, k=4, inv=0.2)
+fitGTR <- optim.pml(fitGTR, model = "GTR", optInv = T, optGamma = T,
+                    rearrangement = "stochastic", control = pml.control(trace = 0))
+detach("package:phangorn", unload = T)
+```
+# Combine the data into Phyloseq object: 
+The package ```phyloseq``` organizes and synthesizes the different data types from a typical amplicon sequencing experiment into a single data object that can be easily manipulated. The last bit of information needed is the sample data contained in a .csv file. This can be downloaded from github:
+```{r, echo=F, message=F, warning=F}
+samdf <- read.csv("https://raw.githubusercontent.com/spholmes/F1000_workflow/master/data/MIMARKS_Data_combined.csv",header=TRUE)
+samdf$SampleID <- paste0(gsub("00", "", samdf$host_subject_id), "D", samdf$age)
+samdf <- samdf[!duplicated(samdf$SampleID),] # Remove duplicate entries for reverse reads
+rownames(seqtabAll <- gsub("124", "125", rownames(seqtabAll))) # Discrepencies removed May be commented for other data
+all(rownames(seqtabAll) %in% samdf$SampleID)
+
+```
+
+
+
+```{r echo=F, message=F, warning=F}
+rownames(samdf) <- samdf$SampleID
+keep.cols <- c("collection_date", "biome", "target_gene", "target_subfragment",
+"host_common_name", "host_subject_id", "age", "sex", "body_product", "tot_mass",
+"diet", "family_relationship", "genotype", "SampleID")
+samdf <- samdf[rownames(seqtabAll), keep.cols]
+```
+
+
+
+```{r, echo=F, message=F, warning=F}
+ps <- phyloseq(otu_table(seqtabNoC, taxa_are_rows = F),
+               sample_data(samdf),
+               tax_table(taxTab), phy_tree(fitGTR$tree))
+ps <- prune_samples(sample_names(ps) != "Mock", ps)
+ps
+```
+
+
+
+```{r echo=F, message=F, warning=F}
+
+```
+
+
+
+```{r, echo=F, message=F, warning=F}
+
+```
+
+
+
+```{r echo=F, message=F, warning=F}
+
+```
+
+
+
+```{r, echo=F, message=F, warning=F}
+
+```
+
+
+
+```{r echo=F, message=F, warning=F}
+
+```
+
+
+
+```{r, echo=F, message=F, warning=F}
+
+```
+
+
+
+```{r echo=F, message=F, warning=F}
+
+```
+
+
+
+```{r, echo=F, message=F, warning=F}
+
+```
+
+
+
+```{r echo=F, message=F, warning=F}
+
+```
+
+
+
+```{r, echo=F, message=F, warning=F}
+
+```
+
+
+
+```{r echo=F, message=F, warning=F}
+
+```
+
+
+
+```{r, echo=F, message=F, warning=F}
+
+```
+
+
+
+```{r echo=F, message=F, warning=F}
+
+```
+
+
+
+```{r, echo=F, message=F, warning=F}
+
+```
+
+
+
+```{r echo=F, message=F, warning=F}
+
+```
+
+
+
+```{r, echo=F, message=F, warning=F}
+
+```
+
+
+
+```{r echo=F, message=F, warning=F}
+
+```
+
+
+
+```{r, echo=F, message=F, warning=F}
+
+```
+
+
+
+```{r echo=F, message=F, warning=F}
+
+```
+
+
+
+```{r, echo=F, message=F, warning=F}
+
+```
+
+
+
+```{r echo=F, message=F, warning=F}
+
+```
+
+
+
+```{r, echo=F, message=F, warning=F}
+
+```
+
+
+
+```{r echo=F, message=F, warning=F}
+
+```
+
+
+
+```{r, echo=F, message=F, warning=F}
+
+```
+
+
+
+```{r echo=F, message=F, warning=F}
+
+```
+
+
+
+```{r, echo=F, message=F, warning=F}
+
+```
+
+
+
+```{r echo=F, message=F, warning=F}
+
+```
+
+
+
+```{r, echo=F, message=F, warning=F}
+
+```
+
+
+
+```{r echo=F, message=F, warning=F}
+
+```
+
+
+
+```{r, echo=F, message=F, warning=F}
+
+```
+
+
+
+```{r echo=F, message=F, warning=F}
+
+```
+
+
+
+```{r, echo=F, message=F, warning=F}
+
+```
+
+
+
+```{r echo=F, message=F, warning=F}
+
+```
+
+
+
+```{r, echo=F, message=F, warning=F}
+
+```
+
+
+
+```{r echo=F, message=F, warning=F}
+
+```
+
+
+
+```{r, echo=F, message=F, warning=F}
+
+```
+
+
+
+```{r echo=F, message=F, warning=F}
+
+```
+
+
+
+```{r, echo=F, message=F, warning=F}
+
+```
+
+
+
+```{r echo=F, message=F, warning=F}
+
+```
+
+
+
+```{r, echo=F, message=F, warning=F}
+
+```
+
+
+
+```{r echo=F, message=F, warning=F}
+
+```
+
+
+
+```{r, echo=F, message=F, warning=F}
+
+```
+
+
+
+```{r echo=F, message=F, warning=F}
+
+```
+
+
+
