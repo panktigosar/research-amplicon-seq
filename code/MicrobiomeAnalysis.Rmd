@@ -1,4 +1,3 @@
----
 title: "Microbiome Analysis"
 author: "Pankti"
 date: "2024-03-03"
@@ -9,8 +8,9 @@ output: html_document
 knitr::opts_chunk$set(echo = TRUE)
 ```
 
-Installing Libraries
-```{r, echo=F, message=F, warning=F, Installing Libraries}
+This code is written to practice the workflow for processing and analyzing data from amplicon sequencing experiment. The data used here comes from V4 region of 16s genes. 360 fecal samples were collected from 12 mice over a period of one year to study murine microbiome. The data can be found [here](https://mothur.org/w/images/d/d6/MiSeqSOPData.zip/). 
+
+```{r, echo=F, message=F, warning=F}
 library(knitr)
 library(microbiome)
 library(dada2)
@@ -32,6 +32,7 @@ library("phyloseqGraphTest")
 library("ggnetwork")
 library(randomForest)
 library(structSSI)
+library(igraph)
 ```
 
 
@@ -42,14 +43,15 @@ library(structSSI)
 
 
 
-```{r, echo=F, message=F, warning=F, Installing Libraries}
+```{r, echo=F, message=F, warning=F}
 miseq_path <- "../data/MiSeq_SOP/"
 # list.files(miseq_path)
 ```
 
-Filter and Trim
+<font color = "blue">Filter and Trim</font>
+To begin with, we filter out the low quality reads. So we plot the data quality first, to see where to filter out in this dataset. Here we plot data from first two samples of forward and reverse reads. 
 
-```{r echo=F, message=F, warning=F}
+```{r echo=T, message=F, warning=F}
 # Sorting files with forward and reverse reads
 fnFs <- sort(list.files(miseq_path, pattern = "_R1_001.fastq")) # Forward reads
 fnRs <- sort(list.files(miseq_path, pattern = "_R2_001.fastq")) # Reverse reads
@@ -67,7 +69,7 @@ dada2::plotQualityProfile(fnFs[1:2])
 
 
 
-```{r, echo=F, message=F, warning=F}
+```{r, echo=T, message=F, warning=F}
 dada2::plotQualityProfile(fnRs[1:2])
 ```
 
@@ -75,7 +77,7 @@ Here, the forward reads maintain high quality throughout, while the quality of t
 
 We define the filenames for the filtered fastq.gz files:
 
-```{r echo=F, message=F, warning=F}
+```{r echo=T, message=F, warning=F}
 filt_path <- file.path(miseq_path, "filtered") # To keep filtered files in filtered directories
 if(!file_test("-d", filt_path)) dir.create(filt_path)
 filtFs <- file.path(filt_path, paste0(sampleNames, "_F_filt.fastq.gz"))
@@ -84,20 +86,22 @@ filtRs <- file.path(filt_path, paste0(sampleNames, "_R_filt.fastq.gz"))
 
 
 
-```{r, echo=F, message=F, warning=F}
+```{r, echo=T, message=F, warning=F}
 out <- dada2::filterAndTrim(fnFs, filtFs, fnRs, filtRs, truncLen = c(240, 160),
                             maxN = 0, maxEE = c(2,2), truncQ = 2, rm.phix = TRUE,
                             compress = T, multithread = T)
 # head(out)
 ```
 # Infer Sequence variants
-After filtering, the typical amplicon bioinformatics workflow clusters sequencing reads into operational taxonomic units (OTUs): groups of sequencing reads that differ by less than a fixed dissimilarity threshhold. Here we instead use the high-resolution DADA2 method to to infer amplicon sequence variants (ASVs) exactly, without imposing any arbitrary threshhold, and thereby resolving variants that differ by as little as one nucleotide (Benjamin J Callahan et al. 2016).
+The next step in the workflow is to cluster the sequences based on a arbitrary fixed dissimilarity threshold, however, with DADA2 package, we can get amplicon sequencing variants exactly, with the resolution of one nucleotide (Benjamin J Callahan et al. 2016). 
 
-The sequence data is imported into R from demultiplexed fastq files (i.e. one fastq for each sample) and simultaneously dereplicated to remove redundancy. We name the resulting derep-class objects by their sample name.
+The sequence data is imported into R from demultiplexed fastq files (i.e. one fastq for each sample) and simultaneously dereplicated to remove redundancy. This done to improve efficiency of computational time. 
 
 # Dereplication
-Dereplication combines all identical sequencing reads into into “unique sequences” with a corresponding “abundance”: the number of reads with that unique sequence. Dereplication substantially reduces computation time by eliminating redundant comparisons.
-```{r echo=F, message=F, warning=F}
+Dereplication combines all identical sequencing reads into “unique sequences” with a corresponding “abundance”: the number of reads with that unique sequence. 
+This step is essentially converting the data with sequences into counts that can be used for further analysis.
+
+```{r echo=T, message=F, warning=F}
 derepFs <- dada2::derepFastq(filtFs, verbose = T)
 derepRs <- dada2::derepFastq(filtRs, verbose = T)
 
@@ -105,58 +109,58 @@ derepRs <- dada2::derepFastq(filtRs, verbose = T)
 names(derepFs) <- sampleNames
 names(derepRs) <- sampleNames
 ```
-The DADA2 method relies on a parameterized model of substitution errors to distinguish sequencing errors from real biological variation. Because error rates can (and often do) vary substantially between sequencing runs and PCR protocols, the model parameters can be discovered from the data itself using a form of unsupervised learning in which sample inference is alternated with parameter estimation until both are jointly consistent.
 
-Parameter learning is computationally intensive, as it requires multiple iterations of the sequence inference algorithm, and therefore it is often useful to estimate the error rates from a (sufficiently large) subset of the data.
-```{r, echo=F, message=F, warning=F}
+Next, we need to distinguish sequencing errors from biological variation and and DADA2 relies on unsupervised learning from the data where sample interference and parameter estimation are alternated with until consistency is seen.  
+
+```{r, echo=T, message=F, warning=F}
 errF <- dada2::learnErrors(filtFs, multithread = T)
-```
-
-
-
-```{r echo=F, message=F, warning=F}
 errR <- learnErrors(filtRs, multithread = T)
 ```
 
 
 
-```{r, echo=F, message=F, warning=F}
+```{r echo=T, message=F, warning=F}
+
+```
+
+
+
+```{r, echo=T, message=F, warning=F}
 plotErrors(errF)
 plotErrors(errR)
 ```
 
-In order to verify that the error rates have been reasonably well-estimated, we inspect the fit between the observed error rates (black points) and the fitted error rates (black lines) in Figure 1. These figures show the frequencies of each type of transition as a function of the quality.
+Here, since we see fewer errors that are outliers with respect to the fitted error rates, we can resonably sure of the estimation by the parameterized model.  
 
-The DADA2 sequence inference method can run in two different modes: Independent inference by sample (pool=FALSE), and inference from the pooled sequencing reads from all samples (pool=TRUE). Independent inference has the advantage that computation time is linear in the number of samples, and memory requirements are flat with the number of samples. This allows scaling out to datasets of almost unlimited size. Pooled inference is more computationally taxing, and can become intractable for datasets of tens of millions of reads. However, pooling improves the detection of rare variants that were seen just once or twice in an individual sample but many times across all samples. As this dataset is not particularly large, we perform pooled inference. As of version 1.2, multithreading can now be activated with the arguments multithread = TRUE, which substantially speeds this step.
 
-```{r echo=F, message=F, warning=F}
+```{r echo=T, message=F, warning=F}
 dadaFs <- dada(derepFs, err=errF, multithread = T, USE_QUALS=TRUE)
+dadaRs <- dada(derepRs, err=errR, multithread = T, USE_QUALS=TRUE)
 ```
 
 
 
-```{r, echo=F, message=F, warning=F}
-dadaRs <- dada(derepRs, err=errR, multithread = T, USE_QUALS=TRUE)
+```{r, echo=T, message=F, warning=F}
+
 ```
 
 Inspecting the dada class object returned by dada
 
-```{r echo=F, message=F, warning=F}
+```{r echo=T, message=F, warning=F}
 dadaFs[[1]]
 ```
 The DADA2 algorithm inferred 128 real sequence variants from the 1979 unique sequences in the first sample. The dada-class object contains multiple diagnostics about the quality of each inferred sequence variant(see help("dada-class") for some info).
 
-The DADA2 sequence inference step removed (nearly) all substitution and indel errors from the data (Benjamin J Callahan et al. 2016). We now merge together the inferred forward and reverse sequences, removing paired sequences that do not perfectly overlap as a final control against residual errors.
+Now , that the DADA2 sequence inference step removed most substitution and indel errors, (Benjamin J Callahan et al. 2016), we can merge the inferred  forward and reverse squences and remove paired sequences that do not perfectly overlap as a last step in quality control of errors. 
 
-# Construct sequence table and remove chimeras:
-he DADA2 method produces a sequence table that is a higher-resolution analogue of the common “OTU table”, i.e. a sample by sequence feature table valued by the number of times each sequence was observed in each sample.
-```{r, echo=F, message=F, warning=F}
+```{r, echo=T, message=F, warning=F}
 mergers <- mergePairs(dadaFs, derepFs, dadaRs, derepRs)
 ```
 
+# Construct sequence table and remove chimeras:
+he DADA2 method produces a sequence table that is a higher-resolution analogue of the common “OTU table” (operational taxonomic units), i.e. a sample by sequence feature table valued by the number of times each sequence was observed in each sample.
 
-
-```{r echo=F, message=F, warning=F}
+```{r echo=T, message=F, warning=F}
 seqtabAll <- makeSequenceTable(mergers[!grepl("Mock", names(mergers))])
 table(nchar(getSequences(seqtabAll)))
 
@@ -165,31 +169,37 @@ table(nchar(getSequences(seqtabAll)))
 # saveRDS(seqtabAll, file = "microbiome.rds")
 # seqtabAll <- readRDS("microbiome.rds")
 ```
-Notably, chimeras have not yet been removed. The error model in the sequence inference algorithm does not include a chimera component, and therefore we expect this sequence table to include many chimeric sequences. We now remove chimeric sequences by comparing each inferred sequence to the others in the table, and removing those that can be reproduced by stitching together two more abundant sequences.
-```{r, echo=F, message=F, warning=F}
+
+Since the error model that we used above does not account for chimeric components, we remove them by comparing every inferred sequence to others in the table, and removing the ones that have partial compliments to others sequences. 
+
+```{r, echo=T, message=F, warning=F}
 seqtabNoC <- removeBimeraDenovo(seqtabAll)
 ```
-Although exact numbers vary substantially by experimental condition, it is typical that chimeras comprise a substantial fraction of inferred sequence variants, but only a small fraction of all reads. That is what is observed here chimeras make up about 22% of the inferred sequence variants, but those variants account for only about 4% of the total sequence reads.
+
+Based on the numbers of sequences before and after removal of the chimeric sequences, they make up for 22% of the infered sequence variants. They however make up for no more than 4% of total sequence reads. 
 
 # Assign Taxonomy:
-One of the benefits of using well-classified marker loci like the 16S rRNA gene is the ability to taxonomically classify the sequence variants. The dada2 package implements the naive Bayesian classifier method for this purpose (Wang et al. 2007). This classifier compares sequence variants to a training set of classified sequences, and here we use the RDP v16 training set (Cole et al. 2009).
+By sequencing 16srRNA genes, we can taxonomically classify sequence variants. By using the naive Bayesian classifier method (Wang et al. 2007), sequence variants are compared to a set of classified sequences for training. Here we use RDP v16 training set (Cole et al. 2009). For fungal taxonomy, the General Fasta release files from the [UNITE ITS database](https://unite.ut.ee/repository.php) can be used without any modification. 
 
-The dada2 tutorial website contains formatted training fastas for the RDP training set, GreenGenes clustered at 97% identity, and the Silva reference database available. For fungal taxonomy, the General Fasta release files from the [UNITE ITS database](https://unite.ut.ee/repository.php) can be used as is. To follow this workflow, download the rdp_train_set_16.fa.gz file, and place it in the directory with the fastq files.
-```{r echo=F, message=F, warning=F}
+```{r echo=T, message=F, warning=F}
 fastaRef <- "../data/MiSeq_SOP/rdp_train_set_16.fa.gz"
 taxTab <- assignTaxonomy(seqtabNoC, refFasta = fastaRef, multithread = T)
 unname(head(taxTab))
 ```
-# Construct a Phylogenetic tree:
-Phylogenetic relatedness is commonly used to inform downstream analyses, especially the calculation of phylogeny-aware distances between microbial communities. The DADA2 sequence inference method is reference-free, so we must construct the phylogenetic tree relating the inferred sequence variants de novo. We begin by performing a multiple-alignment using the DECIPHER R package (Wright 2015).
 
-```{r, echo=F, message=F, warning=F}
+# Construct a Phylogenetic tree:
+Using the DECIPHER package, we use the sequences found after removing the chimeras to perform multiple alignment for constructing a phylogenetic tree. The sequence inference method we used does not use a reference, so we construct the phylogenetic tree de novo. First we use ```DECIPHER``` for multiple alignment and then use ```phangorn``` to contruct a phylogenetic tree. We construct the neighbourhood joining tree first and then fit a GTR+G+I (Generalized time reviersible with Gamma rate variation) maximum likelihood tree using the neighbour-joining tree as the initiating point. 
+
+
+```{r, echo=T, message=F, warning=F}
 seqs <- getSequences(seqtabNoC)
 names(seqs) <- seqs
 alignment <- DECIPHER::AlignSeqs(DNAStringSet(seqs), anchor=NA, verbose = F)
 ```
-The ```phangorn``` R package is then used to construct a phylogenetic tree. Here we first construct a neighbor-joining tree, and then fit a GTR+G+I (Generalized time-reversible with Gamma rate variation) maximum likelihood tree using the neighbor-joining tree as a starting point.
-```{r echo=F, message=F, warning=F}
+
+
+
+```{r echo=T, message=F, warning=F}
 phangAlign <- phyDat(as(alignment, "matrix"), type = "DNA")
 dm <- dist.ml(phangAlign)
 treeNJ <- NJ(dm) 
@@ -200,8 +210,8 @@ fitGTR <- optim.pml(fitGTR, model = "GTR", optInv = T, optGamma = T,
 detach("package:phangorn", unload = T)
 ```
 # Combine the data into Phyloseq object: 
-The package ```phyloseq``` organizes and synthesizes the different data types from a typical amplicon sequencing experiment into a single data object that can be easily manipulated. The last bit of information needed is the sample data contained in a .csv file. This can be downloaded from github:
-```{r, echo=F, message=F, warning=F}
+The package ```phyloseq``` organizes and synthesizes the different data types from a typical amplicon sequencing experiment into a single data object that can be easily manipulated. The sample data is downloaded from github:
+```{r, echo=T, message=F, warning=F}
 samdf <- read.csv("https://raw.githubusercontent.com/spholmes/F1000_workflow/master/data/MIMARKS_Data_combined.csv",header=TRUE)
 samdf$SampleID <- paste0(gsub("00", "", samdf$host_subject_id), "D", samdf$age-21)
 samdf <- samdf[!duplicated(samdf$SampleID),] # Remove dupicate entries for reverse reads
@@ -212,7 +222,7 @@ all(rownames(seqtabAll) %in% samdf$SampleID) # Should be TRUE
 
 
 
-```{r echo=F, message=F, warning=F}
+```{r echo=T, message=F, warning=F}
 rownames(samdf) <- samdf$SampleID
 keep.cols <- c("collection_date", "biome", "target_gene", "target_subfragment",
 "host_common_name", "host_subject_id", "age", "sex", "body_product", "tot_mass",
@@ -220,19 +230,19 @@ keep.cols <- c("collection_date", "biome", "target_gene", "target_subfragment",
 samdf <- samdf[rownames(seqtabAll), keep.cols]
 ```
 
+All the data needed for this analysis including the sequence feature table, metadata, taxonomy information and phylogenetic tree are combines into an object. 
 
-
-```{r, echo=F, message=F, warning=F}
+```{r, echo=T, message=F, warning=F}
 ps <- phyloseq(otu_table(seqtabNoC, taxa_are_rows = F),
                sample_data(samdf),
                tax_table(taxTab), phy_tree(fitGTR$tree))
-ps <- prune_samples(sample_names(ps) != "Mock", ps)
+ps <- prune_samples(sample_names(ps) != "Mock", ps) # Remove the "Mock" sample
 ps
 ```
 
 
 
-```{r echo=F, message=F, warning=F}
+```{r echo=T, message=F, warning=F}
 ps_connect <- url("https://raw.githubusercontent.com/spholmes/F1000_workflow/master/data/ps.rds")
 ps = readRDS(ps_connect)
 ps
@@ -240,7 +250,7 @@ ps
 
 
 
-```{r, echo=F, message=F, warning=F}
+```{r, echo=T, message=F, warning=F}
 # Show available ranks in dataset
 rank_names(ps)
 
@@ -250,13 +260,13 @@ table(tax_table(ps)[, "Phylum"], exclude=NULL)
 
 
 
-```{r echo=F, message=F, warning=F}
+```{r echo=T, message=F, warning=F}
 ps <- subset_taxa(ps, !is.na(Phylum) & !Phylum %in% c("", "uncharachterized"))
 ```
 
 
 
-```{r, echo=F, message=F, warning=F}
+```{r, echo=T, message=F, warning=F}
 # Compute prevelance of each feature
 prevdf = apply(X = otu_table(ps),
                MARGIN = ifelse(taxa_are_rows(ps), yes = 1, no = 2),
@@ -270,13 +280,13 @@ prevdf = data.frame(Prevalence = prevdf,
 
 
 
-```{r echo=F, message=F, warning=F}
+```{r echo=T, message=F, warning=F}
 plyr::ddply(prevdf, "Phylum", function(df1){cbind(mean(df1$Prevalence),sum(df1$Prevalence))})
 ```
 
 
 
-```{r, echo=F, message=F, warning=F}
+```{r, echo=T, message=F, warning=F}
 # Define phyla to filter
 filterPhyla = c("Fusobacteria", "Deinococcus-Thermus")
 # Filter entries with unidentified Phylum.
@@ -286,7 +296,7 @@ ps1
 
 
 # Prevalence filtering
-```{r echo=F, message=F, warning=F}
+```{r echo=T, message=F, warning=F}
 # Subset to the remaining phyla
 prevdf1 = subset(prevdf, Phylum %in% get_taxa_unique(ps1, "Phylum"))
 ggplot(prevdf1, aes(TotalAbundance, Prevalence / nsamples(ps),color=Phylum)) +
@@ -298,7 +308,7 @@ ggplot(prevdf1, aes(TotalAbundance, Prevalence / nsamples(ps),color=Phylum)) +
 
 
 
-```{r, echo=F, message=F, warning=F}
+```{r, echo=T, message=F, warning=F}
 # Define prevalence threshold as 5% of total samples
 prevalenceThreshold = 0.05 * nsamples(ps)
 prevalenceThreshold
@@ -306,7 +316,7 @@ prevalenceThreshold
 
 
 
-```{r echo=F, message=F, warning=F}
+```{r echo=T, message=F, warning=F}
 # Execute prevalence filter, using `prune_taxa()` function
 keepTaxa = rownames(prevdf1)[(prevdf1$Prevalence >= prevalenceThreshold)]
 ps2 = prune_taxa(keepTaxa, ps)
@@ -314,7 +324,7 @@ ps2 = prune_taxa(keepTaxa, ps)
 
 
 
-```{r, echo=F, message=F, warning=F}
+```{r, echo=T, message=F, warning=F}
 # How many genera would be present after filtering?
 length(get_taxa_unique(ps2, taxonomic.rank = "Genus"))
 
@@ -323,14 +333,14 @@ ps3 = tax_glom(ps2, "Genus", NArm = TRUE)
 
 
 
-```{r echo=F, message=F, warning=F}
+```{r echo=T, message=F, warning=F}
 h1 = 0.4
 ps4 = tip_glom(ps2, h = h1)
 ```
 
 
 
-```{r, echo=F, message=F, warning=F}
+```{r, echo=T, message=F, warning=F}
 multiPlotTitleTextSize = 15
 p2tree = plot_tree(ps2, method = "treeonly",
                    ladderize = "left",
@@ -349,7 +359,7 @@ grid.arrange(nrow = 1, p2tree, p3tree, p4tree)
 
 
 
-```{r echo=F, message=F, warning=F}
+```{r echo=T, message=F, warning=F}
 plot_abundance = function(physeq,title = "",
                           Facet = "Order", Color = "Phylum"){
   # Arbitrary subset, based on Phylum, for plotting
@@ -368,7 +378,7 @@ plot_abundance = function(physeq,title = "",
 
 
 
-```{r, echo=F, message=F, warning=F}
+```{r, echo=T, message=F, warning=F}
 # Transform to relative abundance. Save as new object.
 ps3ra = transform_sample_counts(ps3, function(x){x / sum(x)})
 
@@ -380,27 +390,27 @@ grid.arrange(nrow = 2,  plotBefore, plotAfter)
 
 # Subset by taxonomy
 
-```{r echo=F, message=F, warning=F}
+```{r echo=T, message=F, warning=F}
 psOrd = subset_taxa(ps3ra, Order == "Lactobacillales")
 plot_abundance(psOrd, Facet = "Genus", Color = NULL)
 ```
 
 # Preprocessing
 
-```{r, echo=F, message=F, warning=F}
+```{r, echo=T, message=F, warning=F}
 qplot(sample_data(ps)$age, geom = "histogram",binwidth=20) + xlab("age")
 ```
 
 
 
-```{r echo=F, message=F, warning=F}
+```{r echo=T, message=F, warning=F}
 qplot(log10(rowSums(otu_table(ps))),binwidth=0.2) +
   xlab("Logged counts-per-sample")
 ```
 
 
 
-```{r, echo=F, message=F, warning=F}
+```{r, echo=T, message=F, warning=F}
 sample_data(ps)$age_binned <- cut(sample_data(ps)$age,
                           breaks = c(0, 100, 200, 400))
 levels(sample_data(ps)$age_binned) <- list(Young100="(0,100]", Mid100to200="(100,200]", Old200="(200,400]")
@@ -415,7 +425,7 @@ plot_ordination(pslog, out.wuf.log, color = "age_binned") +
 
 
 
-```{r echo=F, message=F, warning=F}
+```{r echo=T, message=F, warning=F}
 rel_abund <- t(apply(otu_table(ps), 1, function(x) x / sum(x)))
 qplot(rel_abund[, 12], geom = "histogram",binwidth=0.05) +
   xlab("Relative abundance")
@@ -423,27 +433,27 @@ qplot(rel_abund[, 12], geom = "histogram",binwidth=0.05) +
 
 # Different Orientation projections
 
-```{r, echo=F, message=F, warning=F}
+```{r, echo=T, message=F, warning=F}
 outliers <- c("F5D165", "F6D165", "M3D175", "M4D175", "M5D175", "M6D175")
 ps <- prune_samples(!(sample_names(ps) %in% outliers), ps)
 ```
 
 
 
-```{r echo=F, message=F, warning=F}
+```{r echo=T, message=F, warning=F}
 which(!rowSums(otu_table(ps)) > 1000)
 ```
 
 
 
-```{r, echo=F, message=F, warning=F}
+```{r, echo=T, message=F, warning=F}
 ps <- prune_samples(rowSums(otu_table(ps)) > 1000, ps)
 pslog <- transform_sample_counts(ps, function(x) log(1 + x))
 ```
 
 
 
-```{r echo=F, message=F, warning=F}
+```{r echo=T, message=F, warning=F}
 out.pcoa.log <- ordinate(pslog,  method = "MDS", distance = "bray")
 evals <- out.pcoa.log$values[,1]
 plot_ordination(pslog, out.pcoa.log, color = "age_binned",
@@ -454,7 +464,7 @@ plot_ordination(pslog, out.pcoa.log, color = "age_binned",
 
 
 
-```{r, echo=F, message=F, warning=F}
+```{r, echo=T, message=F, warning=F}
 out.dpcoa.log <- ordinate(pslog, method = "DPCoA")
 evals <- out.dpcoa.log$eig
 plot_ordination(pslog, out.dpcoa.log, color = "age_binned", label= "SampleID",
@@ -465,14 +475,14 @@ plot_ordination(pslog, out.dpcoa.log, color = "age_binned", label= "SampleID",
 
 
 
-```{r echo=F, message=F, warning=F}
+```{r echo=T, message=F, warning=F}
 plot_ordination(pslog, out.dpcoa.log, type = "species", color = "Phylum") +
   coord_fixed(sqrt(evals[2] / evals[1]))
 ```
 
 
 
-```{r, echo=F, message=F, warning=F}
+```{r, echo=T, message=F, warning=F}
 out.wuf.log <- ordinate(pslog, method = "PCoA", distance ="wunifrac")
 evals <- out.wuf.log$values$Eigenvalues
 plot_ordination(pslog, out.wuf.log, color = "age_binned",
@@ -483,21 +493,21 @@ plot_ordination(pslog, out.wuf.log, color = "age_binned",
 
 ## PCA on Ranks
 
-```{r echo=F, message=F, warning=F}
+```{r echo=T, message=F, warning=F}
 abund <- otu_table(pslog)
 abund_ranks <- t(apply(abund, 1, rank))
 ```
 
 
 
-```{r, echo=F, message=F, warning=F}
+```{r, echo=T, message=F, warning=F}
 abund_ranks <- abund_ranks - 329
 abund_ranks[abund_ranks < 1] <- 1
 ```
 
 
 
-```{r echo=F, message=F, warning=F}
+```{r echo=T, message=F, warning=F}
 abund_df <- melt(abund, value.name = "abund") %>%
   left_join(melt(abund_ranks, value.name = "rank"))
 colnames(abund_df) <- c("sample", "seq", "abund", "rank")
@@ -517,7 +527,7 @@ ggplot(abund_df %>%
 
 
 
-```{r, echo=F, message=F, warning=F}
+```{r, echo=T, message=F, warning=F}
 ranks_pca <- dudi.pca(abund_ranks, scannf = F, nf = 3)
 row_scores <- data.frame(li = ranks_pca$li,
                          SampleID = rownames(abund_ranks))
@@ -539,7 +549,7 @@ col_scores <- col_scores %>%
 
 
 
-```{r echo=F, message=FALSE, warning=FALSE}
+```{r echo=T, message=FALSE, warning=FALSE}
 evals_prop <- 100 * (ranks_pca$eig / sum(ranks_pca$eig))
 ggplot() +
   geom_point(data = row_scores, aes(x = li.Axis1, y = li.Axis2), shape = 2) +
@@ -558,13 +568,13 @@ ggplot() +
 
 # Cannonical correspondance
 
-```{r, echo=F, message=F, warning=F}
+```{r, echo=T, message=F, warning=F}
 ps_ccpna <- ordinate(pslog, "CCA", formula = pslog ~ age_binned + family_relationship)
 ```
 
 
 
-```{r echo=F, message=F, warning=F}
+```{r echo=T, message=F, warning=F}
 library(ggrepel)
 ps_scores <- vegan::scores(ps_ccpna)
 sites <- data.frame(ps_scores$sites)
@@ -579,7 +589,7 @@ species <- species %>%
 evals_prop <- 100 * ps_ccpna$CCA$eig[1:2] / sum(ps_ccpna$CA$eig)
 ```
 
-```{r echo=F, message=F, warning=F}
+```{r echo=T, message=F, warning=F}
 ggplot() +
   geom_point(data = sites, aes(x = CCA1, y = CCA2), shape = 2, alpha = 0.5) +
   geom_point(data = species, aes(x = CCA1, y = CCA2, col = Order), size = 0.5) +
@@ -598,7 +608,7 @@ ggplot() +
 
 # Supervised learning
 
-```{r, echo=F, message=F, warning=F}
+```{r, echo=T, message=F, warning=F}
 library(caret)
 sample_data(pslog)$age2 <- cut(sample_data(pslog)$age, c(0, 100, 400))
 dataMatrix <- data.frame(age = sample_data(pslog)$age2, otu_table(pslog))
@@ -613,14 +623,14 @@ plsFit <- train(age ~ ., data = training,
 
 
 
-```{r echo=F, message=F, warning=F}
+```{r echo=T, message=F, warning=F}
 plsClasses <- predict(plsFit, newdata = testing)
 table(plsClasses, testing$age)
 ```
 
 
 
-```{r, echo=F, message=F, warning=F}
+```{r, echo=T, message=F, warning=F}
 library(randomForest)
 rfFit <- train(age ~ ., data = training, method = "rf",
                preProc = "center", proximity = TRUE)
@@ -630,7 +640,7 @@ table(rfClasses, testing$age)
 
 
 
-```{r echo=F, message=F, warning=F}
+```{r echo=T, message=F, warning=F}
 pls_biplot <- list("loadings" = loadings(plsFit$finalModel),
                    "scores" = plsFit[["finalModel"]][["scores"]])
 class(pls_biplot$scores) <- "matrix"
@@ -650,7 +660,7 @@ pls_biplot$loadings <- data.frame(tax, pls_biplot$loadings)
 
 
 
-```{r, echo=F, message=F, warning=F}
+```{r, echo=T, message=F, warning=F}
 ggplot() +
   geom_point(data = pls_biplot$scores,
              aes(x = Comp.1, y = Comp.2), shape = 2) +
@@ -667,7 +677,7 @@ ggplot() +
 
 
 
-```{r echo=F, message=F, warning=F}
+```{r echo=T, message=F, warning=F}
 rf_prox <- cmdscale(1 - rfFit$finalModel$proximity) %>%
   data.frame(sample_data(pslog)[inTrain, ])
 
@@ -681,7 +691,7 @@ ggplot(rf_prox) +
 
 
 
-``` {r, echo=F, message=F, warning=F}
+``` {r, echo=T, message=F, warning=F}
 as.vector(tax_table(ps)[which.max(importance(rfFit$finalModel)), c("Family", "Genus")])
 impOtu <- as.vector(otu_table(pslog)[,which.max(importance(rfFit$finalModel))])
 maxImpDF <- data.frame(sample_data(pslog), abund = impOtu)
@@ -692,25 +702,24 @@ ggplot(maxImpDF) +   geom_histogram(aes(x = abund)) +
 
 
 
-```{r, echo=F, message=F, warning=F}
+```{r, echo=T, message=F, warning=F}
 
-net <- make_network(ps, max.dist=0.35)
-# net <- Filter(function(lst) length(lst) > 1, net1)
+net <- make_network(ps, max.dist=0.35, keep.isolates = FALSE)
 sampledata <- data.frame(sample_data(ps))
 V(net)$id <- sampledata[names(V(net)), "host_subject_id"]
 V(net)$litter <- sampledata[names(V(net)), "family_relationship"]
-
-ggplot(net, aes(x = x, y = y, xend = xend, yend = yend), layout = "fruchtermanreingold") +
-  geom_edges(color = "darkgray") +
-  geom_nodes(aes(color = id, shape = litter),  size = 3 ) +
-  theme(axis.text = element_blank(), axis.title = element_blank(),
-        legend.key.height = unit(0.5,"line")) +
-  guides(col = guide_legend(override.aes = list(size = .5)))
+# 
+# ggplot(net, aes(x = x, y = y, xend = xend, yend = yend), layout = "fruchtermanreingold") +
+#   geom_edges(color = "darkgray") +
+#   geom_nodes(aes(color = id, shape = litter),  size = 3 ) +
+#   theme(axis.text = element_blank(), axis.title = element_blank(),
+#         legend.key.height = unit(0.5,"line")) +
+#   guides(col = guide_legend(override.aes = list(size = .5)))
 ```
 
 
 
-```{r echo=F, message=F, warning=F}
+```{r echo=T, message=F, warning=F}
 gt <- graph_perm_test(ps, "family_relationship", grouping = "host_subject_id",
                       distance = "jaccard", type = "mst")
 gt$pval
@@ -723,7 +732,7 @@ grid.arrange(ncol = 2,  plotNet1, plotPerm1)
 
 
 
-```{r, echo=F, message=F, warning=F}
+```{r, echo=T, message=F, warning=F}
 gt <- graph_perm_test(ps, "family_relationship", grouping = "host_subject_id",
                       distance = "jaccard", type = "knn", knn = 1)
 
@@ -735,7 +744,7 @@ grid.arrange(ncol = 2,  plotNet2, plotPerm2)
 
 
 
-```{r echo=F, message=F, warning=F}
+```{r echo=T, message=F, warning=F}
 ps_alpha_div <- estimate_richness(ps, split = TRUE, measure = "Shannon")
 ps_alpha_div$SampleID <- rownames(ps_alpha_div) %>%
   as.factor()
@@ -758,14 +767,14 @@ ps_samp$host_subject_id <- factor(ps_samp$host_subject_id)
 
 
 
-```{r echo=F, message=F, warning=F}
+```{r echo=T, message=F, warning=F}
 alpha_div_model <- lme(fixed = alpha_diversity ~ age_binned, data = ps_samp,
                        random = ~ 1 | host_subject_id)
 ```
 
 
 
-```{r echo=F, message=F, warning=F}
+```{r echo=T, message=F, warning=F}
 new_data <- expand.grid(host_subject_id = levels(ps_samp$host_subject_id),
                         age_binned = levels(ps_samp$age_binned))
 new_data$pred <- predict(alpha_div_model, newdata = new_data)
@@ -777,7 +786,7 @@ new_data$pred_var <- pred_var_fixed + alpha_div_model$sigma ^ 2
 
 
 
-```{r echo=F, message=F, warning=F}
+```{r echo=T, message=F, warning=F}
 # fitted values, with error bars
 ggplot(ps_samp %>% left_join(new_data)) +
   geom_errorbar(aes(x = age_binned, ymin = pred - 2 * sqrt(pred_var),
@@ -790,15 +799,13 @@ ggplot(ps_samp %>% left_join(new_data)) +
   scale_color_brewer(palette = "Set2") +
   labs(x = "Binned Age", y = "Shannon Diversity", color = "Litter") +
   guides(col = guide_legend(override.aes = list(size = 4))) +
-  # theme(panel.border = element_rect(color = "#787878", fill = alpha("white", 0)),
-  #       axis.text.x = element_text(angle = -90, size = 6),
-  #       axis.text.y = element_text(size = 6))
-  theme_minimal()
+  theme(axis.text.x = element_text(angle = -90, size = 6),
+        axis.text.y = element_text(size = 6))
 ```
 
 
 
-```{r echo=F, message=F, warning=F}
+```{r echo=T, message=F, warning=F}
 #New version of DESeq2 needs special levels
 sample_data(ps)$age_binned <- cut(sample_data(ps)$age,
                           breaks = c(0, 100, 200, 400))
@@ -822,7 +829,7 @@ abund <- getVarianceStabilizedData(ps_dds)
 
 
 
-```{r echo=F, message=F, warning=F}
+```{r echo=T, message=F, warning=F}
 short_names <- substr(rownames(abund), 1, 5)%>%
   make.names(unique = TRUE)
 rownames(abund) <- short_names
@@ -830,7 +837,7 @@ rownames(abund) <- short_names
 
 
 
-```{r echo=F, message=F, warning=F}
+```{r echo=T, message=F, warning=F}
 abund_sums <- rbind(data.frame(sum = colSums(abund),
                                sample = colnames(abund),
                                type = "DESeq2"),
@@ -846,7 +853,7 @@ ggplot(abund_sums) +
 
 # Hierarcheal multi-testing:
 
-```{r echo=F, message=F, warning=F}
+```{r echo=T, message=F, warning=F}
 el <- phy_tree(pslog)$edge
 el0 <- el
 el0 <- el0[nrow(el):1, ]
@@ -875,7 +882,7 @@ tax %>%
 
 # Multitable techniques:
 
-```{r echo=F, message=F, warning=F}
+```{r echo=T, message=F, warning=F}
 metab <- read.csv("https://raw.githubusercontent.com/spholmes/F1000_workflow/master/data/metabolites.csv",row.names = 1)
 microbe_connect <-url("https://raw.githubusercontent.com/spholmes/F1000_workflow/master/data/microbe.rda")
 load(microbe_connect)
@@ -884,7 +891,7 @@ microbe
 
 
 
-```{r echo=F, message=F, warning=F}
+```{r echo=T, message=F, warning=F}
 keep_ix <- rowSums(metab == 0) <= 3
 metab <- metab[keep_ix, ]
 microbe <- prune_taxa(taxa_sums(microbe) > 4, microbe)
@@ -899,231 +906,231 @@ dim(metab)
 
 
 
-```{r echo=F, message=F, warning=F}
-cca_res <- PMA::CCA(t(X),  t(metab), penaltyx = .15, penaltyz = .15)
-cca_res
-
-combined <- cbind(t(X[cca_res$u != 0, ]),
-                  t(metab[cca_res$v != 0, ]))
-pca_res <- dudi.pca(combined, scannf = F, nf = 3)
-
-
-genotype <- substr(rownames(pca_res$li), 1, 2)
-sample_type <- substr(rownames(pca_res$l1), 3, 4)
-feature_type <- grepl("\\.", colnames(combined))
-feature_type <- ifelse(feature_type, "Metabolite", "OTU")
-sample_info <- data.frame(pca_res$li, genotype, sample_type)
-feature_info <- data.frame(pca_res$c1,
-                           feature = substr(colnames(combined), 1, 6))
-
-ggplot() +  geom_point(data = sample_info,
-            aes(x = Axis1, y = Axis2, col = sample_type, shape = genotype), size = 3) + 
-  geom_label_repel(data = feature_info,
-                   aes(x = 5.5 * CS1, y = 5.5 * CS2, label = feature, fill = feature_type),
-                   size = 2, segment.size = 0.3,
-                   label.padding = unit(0.1, "lines"), label.size = 0) +
-  geom_point(data = feature_info,
-             aes(x = 5.5 * CS1, y = 5.5 * CS2, fill = feature_type),
-             size = 1, shape = 23, col = "#383838") +
-  scale_color_brewer(palette = "Set2") +
-  scale_fill_manual(values = c("#a6d854", "#e78ac3")) +
-  guides(fill = guide_legend(override.aes = list(shape = 32, size = 0))) +
-  coord_fixed(sqrt(pca_res$eig[2] / pca_res$eig[2])) +
-  labs(x = sprintf("Axis1 [%s%% Variance]",
-                   100 * round(pca_res$eig[1] / sum(pca_res$eig), 2)),
-       y = sprintf("Axis2 [%s%% Variance]",
-                   100 * round(pca_res$eig[2] / sum(pca_res$eig), 2)),
-       fill = "Feature Type", col = "Sample Type")
+```{r echo=T, message=F, warning=F}
+# cca_res <- CCA(t(X),  t(metab), penaltyx = .15, penaltyz = .15)
+# cca_res
+# 
+# combined <- cbind(t(X[cca_res$u != 0, ]),
+#                   t(metab[cca_res$v != 0, ]))
+# pca_res <- dudi.pca(combined, scannf = F, nf = 3)
+# 
+# 
+# genotype <- substr(rownames(pca_res$li), 1, 2)
+# sample_type <- substr(rownames(pca_res$l1), 3, 4)
+# feature_type <- grepl("\\.", colnames(combined))
+# feature_type <- ifelse(feature_type, "Metabolite", "OTU")
+# sample_info <- data.frame(pca_res$li, genotype, sample_type)
+# feature_info <- data.frame(pca_res$c1,
+#                            feature = substr(colnames(combined), 1, 6))
+# 
+# ggplot() +  geom_point(data = sample_info,
+#             aes(x = Axis1, y = Axis2, col = sample_type, shape = genotype), size = 3) + 
+#   geom_label_repel(data = feature_info,
+#                    aes(x = 5.5 * CS1, y = 5.5 * CS2, label = feature, fill = feature_type),
+#                    size = 2, segment.size = 0.3,
+#                    label.padding = unit(0.1, "lines"), label.size = 0) +
+#   geom_point(data = feature_info,
+#              aes(x = 5.5 * CS1, y = 5.5 * CS2, fill = feature_type),
+#              size = 1, shape = 23, col = "#383838") +
+#   scale_color_brewer(palette = "Set2") +
+#   scale_fill_manual(values = c("#a6d854", "#e78ac3")) +
+#   guides(fill = guide_legend(override.aes = list(shape = 32, size = 0))) +
+#   coord_fixed(sqrt(pca_res$eig[2] / pca_res$eig[2])) +
+#   labs(x = sprintf("Axis1 [%s%% Variance]",
+#                    100 * round(pca_res$eig[1] / sum(pca_res$eig), 2)),
+#        y = sprintf("Axis2 [%s%% Variance]",
+#                    100 * round(pca_res$eig[2] / sum(pca_res$eig), 2)),
+#        fill = "Feature Type", col = "Sample Type")
 ```
 
 
 
-```{r echo=F, message=F, warning=F}
-session_info()
+```{r echo=T, message=F, warning=F}
+sessionInfo()
 ```
 
 
 
-```{r echo=F, message=F, warning=F}
-
-```
-
-
-
-```{r echo=F, message=F, warning=F}
+```{r echo=T, message=F, warning=F}
 
 ```
 
 
 
-```{r echo=F, message=F, warning=F}
+```{r echo=T, message=F, warning=F}
 
 ```
 
 
 
-```{r echo=F, message=F, warning=F}
+```{r echo=T, message=F, warning=F}
 
 ```
 
 
 
-```{r echo=F, message=F, warning=F}
+```{r echo=T, message=F, warning=F}
 
 ```
 
 
 
-```{r echo=F, message=F, warning=F}
+```{r echo=T, message=F, warning=F}
 
 ```
 
 
 
-```{r echo=F, message=F, warning=F}
+```{r echo=T, message=F, warning=F}
 
 ```
 
 
 
-```{r echo=F, message=F, warning=F}
+```{r echo=T, message=F, warning=F}
 
 ```
 
 
 
-```{r echo=F, message=F, warning=F}
+```{r echo=T, message=F, warning=F}
 
 ```
 
 
 
-```{r echo=F, message=F, warning=F}
+```{r echo=T, message=F, warning=F}
 
 ```
 
 
 
-```{r echo=F, message=F, warning=F}
+```{r echo=T, message=F, warning=F}
 
 ```
 
 
 
-```{r echo=F, message=F, warning=F}
+```{r echo=T, message=F, warning=F}
 
 ```
 
 
 
-```{r echo=F, message=F, warning=F}
+```{r echo=T, message=F, warning=F}
 
 ```
 
 
 
-```{r echo=F, message=F, warning=F}
+```{r echo=T, message=F, warning=F}
 
 ```
 
 
 
-```{r echo=F, message=F, warning=F}
+```{r echo=T, message=F, warning=F}
 
 ```
 
 
 
-```{r echo=F, message=F, warning=F}
+```{r echo=T, message=F, warning=F}
 
 ```
 
 
 
-```{r echo=F, message=F, warning=F}
+```{r echo=T, message=F, warning=F}
 
 ```
 
 
 
-```{r echo=F, message=F, warning=F}
+```{r echo=T, message=F, warning=F}
 
 ```
 
 
 
-```{r echo=F, message=F, warning=F}
+```{r echo=T, message=F, warning=F}
 
 ```
 
 
 
-```{r echo=F, message=F, warning=F}
+```{r echo=T, message=F, warning=F}
 
 ```
 
 
 
-```{r echo=F, message=F, warning=F}
+```{r echo=T, message=F, warning=F}
 
 ```
 
 
 
-```{r echo=F, message=F, warning=F}
+```{r echo=T, message=F, warning=F}
 
 ```
 
 
 
-```{r echo=F, message=F, warning=F}
+```{r echo=T, message=F, warning=F}
 
 ```
 
 
 
-```{r echo=F, message=F, warning=F}
+```{r echo=T, message=F, warning=F}
 
 ```
 
 
 
-```{r echo=F, message=F, warning=F}
+```{r echo=T, message=F, warning=F}
 
 ```
 
 
 
-```{r echo=F, message=F, warning=F}
+```{r echo=T, message=F, warning=F}
 
 ```
 
 
 
-```{r echo=F, message=F, warning=F}
+```{r echo=T, message=F, warning=F}
 
 ```
 
 
 
-```{r echo=F, message=F, warning=F}
+```{r echo=T, message=F, warning=F}
 
 ```
 
 
 
-```{r echo=F, message=F, warning=F}
+```{r echo=T, message=F, warning=F}
 
 ```
 
 
 
-```{r echo=F, message=F, warning=F}
+```{r echo=T, message=F, warning=F}
 
 ```
 
 
 
-```{r echo=F, message=F, warning=F}
+```{r echo=T, message=F, warning=F}
+
+```
+
+
+
+```{r echo=T, message=F, warning=F}
 
 ```
