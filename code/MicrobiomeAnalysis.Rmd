@@ -222,6 +222,17 @@ all(rownames(seqtabAll) %in% samdf$SampleID) # Should be TRUE
 
 
 
+```{r echo=F, message=F, warning=F}
+
+# The links: https://bioconductor.org/help/course-materials/2017/BioC2017/Day1/Workshops/Microbiome/MicrobiomeWorkflowII.html
+
+# https://f1000research.com/articles/5-1492/v2
+
+
+```
+
+
+
 ```{r echo=T, message=F, warning=F}
 rownames(samdf) <- samdf$SampleID
 keep.cols <- c("collection_date", "biome", "target_gene", "target_subfragment",
@@ -240,7 +251,8 @@ ps <- prune_samples(sample_names(ps) != "Mock", ps) # Remove the "Mock" sample
 ps
 ```
 
-
+# Using phyloseq:
+```phyloseq``` is an R package which uses S4 data class to analyse amplicon-seq data. Additional information about the package can be found at [phyloseq homepage](https://joey711.github.io/phyloseq/). The dada sequence processing was run on the large dataset that is stored on Github and is downloaded as follows. 
 
 ```{r echo=T, message=F, warning=F}
 ps_connect <- url("https://raw.githubusercontent.com/spholmes/F1000_workflow/master/data/ps.rds")
@@ -248,23 +260,31 @@ ps = readRDS(ps_connect)
 ps
 ```
 
+# Filtering 
+```phyloseq``` has tools for filtering, subsetting and grouping data. While this can be used to group the data according to taxa, it can also be used to remove noise.
 
+# Taxonomic filtering
+For many experiments, all organisms are well represented in available taxonomic reference databases. In these conditions, the ambiguous features that cannot be assigned to any high rank taxonomy are usually sequence artifacts that do not exist in nature, and are filtered out. However, for poorly charachterized specimens or novel samples, it is important to rule out the possibility of taxonomic novelty before filtering these sequences. This can be done at various taxon leves as mentioned below.
 
 ```{r, echo=T, message=F, warning=F}
 # Show available ranks in dataset
 rank_names(ps)
+```
 
+Here we consider rank phylum and create a table of read counts for each phylum present. 
+
+```{r, echo=T, message=F, warning=F}
 # create a table with number of features for each phyla
 table(tax_table(ps)[, "Phylum"], exclude=NULL)
 ```
 
-
+The phyla for which only one feature is observed can be filtered out. The features that are annotated with NA can also be filtered out, as they may be artifacts. We also filter out features with ambiguous annotations.
 
 ```{r echo=T, message=F, warning=F}
 ps <- subset_taxa(ps, !is.na(Phylum) & !Phylum %in% c("", "uncharachterized"))
 ```
 
-
+We should also explore the prevelance in the dataset where we see the number of samples in which a phylum is seen atleast once. We calculate the mean and total prevalence of each phylum.
 
 ```{r, echo=T, message=F, warning=F}
 # Compute prevelance of each feature
@@ -276,15 +296,11 @@ prevdf = apply(X = otu_table(ps),
 prevdf = data.frame(Prevalence = prevdf,
                     TotalAbundance = taxa_sums(ps),
                     tax_table(ps))
-```
 
-
-
-```{r echo=T, message=F, warning=F}
 plyr::ddply(prevdf, "Phylum", function(df1){cbind(mean(df1$Prevalence),sum(df1$Prevalence))})
 ```
 
-
+With this table, we can decide which taxa we can filter out. Here Fusobacteria have appeared in only 2 samples and _Deinococcus thermus_ is seen in only 1% of all samples. So we can filter these out. In some cases, it might be useful to not filter them out, but here we will. 
 
 ```{r, echo=T, message=F, warning=F}
 # Define phyla to filter
@@ -294,19 +310,23 @@ ps1 = subset_taxa(ps, !Phylum %in% filterPhyla)
 ps1
 ```
 
+We now visualize prevalence in each phyla for exploratory analysis. 
 
-# Prevalence filtering
 ```{r echo=T, message=F, warning=F}
 # Subset to the remaining phyla
 prevdf1 = subset(prevdf, Phylum %in% get_taxa_unique(ps1, "Phylum"))
-ggplot(prevdf1, aes(TotalAbundance, Prevalence / nsamples(ps),color=Phylum)) +
+ggplot(prevdf1, aes(TotalAbundance, Prevalence/nsamples(ps), color=Phylum)) +
   # Include a guess for parameter
-  geom_hline(yintercept = 0.05, alpha = 0.5, linetype = 2) +  geom_point(size = 2, alpha = 0.7) +
-  scale_x_log10() +  xlab("Total Abundance") + ylab("Prevalence [Frac. Samples]") +
-  facet_wrap(~Phylum) + theme(legend.position="none")
+  geom_hline(yintercept = 0.05, alpha = 0.5, linetype = 2) +
+  geom_point(size = 2, alpha = 0.7) +
+  scale_x_log10() +
+  xlab("Total Abundance") +
+  ylab("Prevalence [Frac. Samples]") +
+  facet_wrap(~Phylum) +
+  theme(legend.position="none")
 ```
 
-
+Note that each point in the figure above represents a different taxa. So we see maximum representation from Firmicutes in this data that we can explore more. 
 
 ```{r, echo=T, message=F, warning=F}
 # Define prevalence threshold as 5% of total samples
@@ -321,12 +341,13 @@ prevalenceThreshold
 keepTaxa = rownames(prevdf1)[(prevdf1$Prevalence >= prevalenceThreshold)]
 ps2 = prune_taxa(keepTaxa, ps)
 ```
-
-
+https://bioconductor.org/help/course-materials/2017/BioC2017/Day1/Workshops/Microbiome/MicrobiomeWorkflowII.html#using_phyloseq
+## Agglomerate Taxa
+Now we agglomerate the taxa in closely related genuses. 
 
 ```{r, echo=T, message=F, warning=F}
 # How many genera would be present after filtering?
-length(get_taxa_unique(ps2, taxonomic.rank = "Genus"))
+length(get_taxa_unique(ps2, taxonomic.rank = "Phylum"))
 
 ps3 = tax_glom(ps2, "Genus", NArm = TRUE)
 ```
@@ -924,7 +945,7 @@ dim(metab)
 #                            feature = substr(colnames(combined), 1, 6))
 # 
 # ggplot() +  geom_point(data = sample_info,
-#             aes(x = Axis1, y = Axis2, col = sample_type, shape = genotype), size = 3) + 
+#             aes(x = Axis1, y = Axis2, col = sample_type, shape = genotype), size = 3) +
 #   geom_label_repel(data = feature_info,
 #                    aes(x = 5.5 * CS1, y = 5.5 * CS2, label = feature, fill = feature_type),
 #                    size = 2, segment.size = 0.3,
