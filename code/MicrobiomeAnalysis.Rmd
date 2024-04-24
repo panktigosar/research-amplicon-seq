@@ -1,8 +1,4 @@
-title: "Microbiome Analysis"
-author: "Pankti"
-date: "2024-03-03"
-output: html_document
----
+# Microbiome Analysis
 
 ```{r setup, include=FALSE}
 knitr::opts_chunk$set(echo = TRUE)
@@ -10,7 +6,7 @@ knitr::opts_chunk$set(echo = TRUE)
 
 This code is written to practice the workflow for processing and analyzing data from amplicon sequencing experiment. The data used here comes from V4 region of 16s genes. 360 fecal samples were collected from 12 mice over a period of one year to study murine microbiome. The data can be found [here](https://mothur.org/w/images/d/d6/MiSeqSOPData.zip/). 
 
-```{r, echo=F, message=F, warning=F}
+```{r, echo=T, message=F, warning=F}
 library(knitr)
 library(microbiome)
 library(dada2)
@@ -37,7 +33,7 @@ library(igraph)
 
 
 ```{r echo=F, message=F, warning=F}
-# set.seed(100)
+set.seed(100)
 ```
 
 
@@ -461,6 +457,7 @@ plot_ordination(pslog, out.dpcoa.log, color = "age_binned", label= "SampleID",
 plot_ordination(pslog, out.dpcoa.log, type = "species", color = "Phylum") +
   coord_fixed(sqrt(evals[2] / evals[1]))
 ```
+
 Here we see the results of PCoA with weighted unifrac, where we see second axis is associated with age effect, however, this does not take abundance into account. 
 
 ```{r, echo=T, message=F, warning=F}
@@ -503,7 +500,7 @@ ggplot(abund_df %>%
   scale_color_brewer(palette = "Set2")
 ```
 
-This is rank thershold transformation. 
+This is rank threshold transformation. 
 
 ```{r, echo=T, message=F, warning=F}
 ranks_pca <- dudi.pca(abund_ranks, scannf = F, nf = 3)
@@ -541,6 +538,7 @@ ggplot() +
   # theme(panel.border = element_rect(color = "#787878", fill = alpha("white", 0)))
   theme_minimal()
 ```
+
 We performed the PCA and the result is similar to PCoA without applying truncated ranking transformation, proving the infalliability of our analysis of the original data. 
 
 # Cannonical correspondance: 
@@ -645,6 +643,7 @@ ggplot() +
   # theme(panel.border = element_rect(color = "#787878", fill = alpha("white", 0)))
   theme_minimal()
 ```
+
 Random forests classify with bootstrap procedure. The distance is measured by how ofte same sample occurs in the same partition. The resulting distance is then inserted into PCoA.
 
 ```{r echo=T, message=F, warning=F}
@@ -688,6 +687,7 @@ ggplot(net, aes(x = x, y = y, xend = xend, yend = yend)) +
         legend.key.height = unit(0.5,"line")) +
   guides(col = guide_legend(override.aes = list(size = .5)))
 ```
+
 In this graph, we can see that the samples are grouped based on mouse from which the sample was collected and the litter of the mouse. 
 
 # Graph based two-sample tests: 
@@ -718,6 +718,7 @@ plotNet2=plot_test_network(gt) + theme(legend.text = element_text(size = 8),
 plotPerm2=plot_permutations(gt)
 grid.arrange(ncol = 2,  plotNet2, plotPerm2)
 ```
+
 The *k*-nearest neighbour graph also reinforces that the samples are grouping by litter. 
 
 # Linear Modelling:
@@ -773,6 +774,7 @@ ggplot(ps_samp %>% left_join(new_data)) +
   theme(axis.text.x = element_text(angle = -90, size = 6),
         axis.text.y = element_text(size = 6))
 ```
+
 Here we see how a single measure of the community structure is associated with the sample characteristics. We can see how the microbial community diversity reflects the environment. 
 
 ```{r echo=T, message=F, warning=F}
