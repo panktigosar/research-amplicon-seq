@@ -36,11 +36,9 @@ library(igraph)
 ```
 
 
-
 ```{r echo=F, message=F, warning=F}
 # set.seed(100)
 ```
-
 
 
 ```{r, echo=F, message=F, warning=F}
@@ -68,7 +66,6 @@ dada2::plotQualityProfile(fnFs[1:2])
 ```
 
 
-
 ```{r, echo=T, message=F, warning=F}
 dada2::plotQualityProfile(fnRs[1:2])
 ```
@@ -83,7 +80,6 @@ if(!file_test("-d", filt_path)) dir.create(filt_path)
 filtFs <- file.path(filt_path, paste0(sampleNames, "_F_filt.fastq.gz"))
 filtRs <- file.path(filt_path, paste0(sampleNames, "_R_filt.fastq.gz"))
 ```
-
 
 
 ```{r, echo=T, message=F, warning=F}
@@ -117,14 +113,6 @@ errF <- dada2::learnErrors(filtFs, multithread = T)
 errR <- learnErrors(filtRs, multithread = T)
 ```
 
-
-
-```{r echo=T, message=F, warning=F}
-
-```
-
-
-
 ```{r, echo=T, message=F, warning=F}
 plotErrors(errF)
 plotErrors(errR)
@@ -132,16 +120,9 @@ plotErrors(errR)
 
 Here, since we see fewer errors that are outliers with respect to the fitted error rates, we can resonably sure of the estimation by the parameterized model.  
 
-
 ```{r echo=T, message=F, warning=F}
 dadaFs <- dada(derepFs, err=errF, multithread = T, USE_QUALS=TRUE)
 dadaRs <- dada(derepRs, err=errR, multithread = T, USE_QUALS=TRUE)
-```
-
-
-
-```{r, echo=T, message=F, warning=F}
-
 ```
 
 Inspecting the dada class object returned by dada
@@ -177,7 +158,6 @@ seqtabNoC <- removeBimeraDenovo(seqtabAll)
 ```
 
 Based on the numbers of sequences before and after removal of the chimeric sequences, they make up for 22% of the infered sequence variants. They however make up for no more than 4% of total sequence reads. 
-
 # Assign Taxonomy:
 By sequencing 16srRNA genes, we can taxonomically classify sequence variants. By using the naive Bayesian classifier method (Wang et al. 2007), sequence variants are compared to a set of classified sequences for training. Here we use RDP v16 training set (Cole et al. 2009). For fungal taxonomy, the General Fasta release files from the [UNITE ITS database](https://unite.ut.ee/repository.php) can be used without any modification. 
 
@@ -190,14 +170,11 @@ unname(head(taxTab))
 # Construct a Phylogenetic tree:
 Using the DECIPHER package, we use the sequences found after removing the chimeras to perform multiple alignment for constructing a phylogenetic tree. The sequence inference method we used does not use a reference, so we construct the phylogenetic tree de novo. First we use ```DECIPHER``` for multiple alignment and then use ```phangorn``` to contruct a phylogenetic tree. We construct the neighbourhood joining tree first and then fit a GTR+G+I (Generalized time reviersible with Gamma rate variation) maximum likelihood tree using the neighbour-joining tree as the initiating point. 
 
-
 ```{r, echo=T, message=F, warning=F}
 seqs <- getSequences(seqtabNoC)
 names(seqs) <- seqs
 alignment <- DECIPHER::AlignSeqs(DNAStringSet(seqs), anchor=NA, verbose = F)
 ```
-
-
 
 ```{r echo=T, message=F, warning=F}
 phangAlign <- phyDat(as(alignment, "matrix"), type = "DNA")
@@ -219,19 +196,6 @@ rownames(seqtabAll) <- gsub("124", "125", rownames(seqtabAll)) # Fix discrepancy
 all(rownames(seqtabAll) %in% samdf$SampleID) # Should be TRUE
 
 ```
-
-
-
-```{r echo=F, message=F, warning=F}
-
-# The links: https://bioconductor.org/help/course-materials/2017/BioC2017/Day1/Workshops/Microbiome/MicrobiomeWorkflowII.html
-
-# https://f1000research.com/articles/5-1492/v2
-
-
-```
-
-
 
 ```{r echo=T, message=F, warning=F}
 rownames(samdf) <- samdf$SampleID
@@ -334,8 +298,6 @@ prevalenceThreshold = 0.05 * nsamples(ps)
 prevalenceThreshold
 ```
 
-
-
 ```{r echo=T, message=F, warning=F}
 # Execute prevalence filter, using `prune_taxa()` function
 keepTaxa = rownames(prevdf1)[(prevdf1$Prevalence >= prevalenceThreshold)]
@@ -343,7 +305,7 @@ ps2 = prune_taxa(keepTaxa, ps)
 ```
 https://bioconductor.org/help/course-materials/2017/BioC2017/Day1/Workshops/Microbiome/MicrobiomeWorkflowII.html#using_phyloseq
 ## Agglomerate Taxa
-Now we agglomerate the taxa in closely related genuses. 
+Now we agglomerate the taxa in closely related genuses. If the taxonomic agglomeration is defined ahead of time, we can get criteria for grouping the microbial features. Not always accurate or useful, we can still get tree-like graph consisting of nodes called "ranks". However, if the taxonomy is not available, clustering can be used where the tree height is specified by users with respect to phylogenetic distance between the features to define the grouping. It is different from OTU clustering because unlike OTU clustering, it uses evolutionary information for sequence distance to cluster. 
 
 ```{r, echo=T, message=F, warning=F}
 # How many genera would be present after filtering?
@@ -352,14 +314,10 @@ length(get_taxa_unique(ps2, taxonomic.rank = "Phylum"))
 ps3 = tax_glom(ps2, "Genus", NArm = TRUE)
 ```
 
-
-
 ```{r echo=T, message=F, warning=F}
 h1 = 0.4
 ps4 = tip_glom(ps2, h = h1)
 ```
-
-
 
 ```{r, echo=T, message=F, warning=F}
 multiPlotTitleTextSize = 15
@@ -378,7 +336,8 @@ p4tree = plot_tree(ps4, method = "treeonly",
 grid.arrange(nrow = 1, p2tree, p3tree, p4tree)
 ```
 
-
+# Abundance Value Transformation
+We can explore relative abundance in each taxon with following snippet.
 
 ```{r echo=T, message=F, warning=F}
 plot_abundance = function(physeq,title = "",
@@ -397,8 +356,6 @@ plot_abundance = function(physeq,title = "",
 }
 ```
 
-
-
 ```{r, echo=T, message=F, warning=F}
 # Transform to relative abundance. Save as new object.
 ps3ra = transform_sample_counts(ps3, function(x){x / sum(x)})
@@ -410,26 +367,34 @@ grid.arrange(nrow = 2,  plotBefore, plotAfter)
 ```
 
 # Subset by taxonomy
+Notice on the previous plot that Lactobacillales appears to be a taxonomic Order with bimodal abundance profile in the data. We can check for a taxonomic explanation of this pattern by plotting just that taxonomic subset of the data. For this, we subset with the function, and then specify a more precise taxonomic rank to the argument of the function that we defined above.
 
 ```{r echo=T, message=F, warning=F}
 psOrd = subset_taxa(ps3ra, Order == "Lactobacillales")
-plot_abundance(psOrd, Facet = "Genus", Color = NULL)
+plot_abundance(psOrd, Facet = "Genus", Color = "Genus")
+```
+
+
+```{r echo=T, message=F, warning=F}
+psOrd = subset_taxa(ps3ra, Order == "Clostridiales")
+plot_abundance(psOrd, Facet = "Family", Color = "Genus")
 ```
 
 # Preprocessing
-
+We want to test if the age of mice has any effect on clustering. S
 ```{r, echo=T, message=F, warning=F}
 qplot(sample_data(ps)$age, geom = "histogram",binwidth=20) + xlab("age")
 ```
 
-
+Here we see, that the age co-variate belongs to three seperate clusters. 
 
 ```{r echo=T, message=F, warning=F}
 qplot(log10(rowSums(otu_table(ps))),binwidth=0.2) +
   xlab("Logged counts-per-sample")
 ```
 
-
+These graphs suggest that a log(1+x) transformations might be sufficient for ```normalizing``` the abundance data for exploratory analysis. 
+We look at the principal coordinates analysis (PCoA) with the Bray-Curtis dissimilarity on the weighted Unifrac distance. H
 
 ```{r, echo=T, message=F, warning=F}
 sample_data(ps)$age_binned <- cut(sample_data(ps)$age,
@@ -444,7 +409,7 @@ plot_ordination(pslog, out.wuf.log, color = "age_binned") +
   coord_fixed(sqrt(evals[2] / evals[1]))
 ```
 
-
+Here we take some of the outliers out, as we are only concerned with the relationships between the non-outlier points. 
 
 ```{r echo=T, message=F, warning=F}
 rel_abund <- t(apply(otu_table(ps), 1, function(x) x / sum(x)))
@@ -453,26 +418,22 @@ qplot(rel_abund[, 12], geom = "histogram",binwidth=0.05) +
 ```
 
 # Different Orientation projections
+Here we do unsupervized exploratory analysis. 
 
+Here we remove the outliers, and samples with less than 1000 reads. Then we run a PCoA using Bray-Curtis similarity. 
 ```{r, echo=T, message=F, warning=F}
 outliers <- c("F5D165", "F6D165", "M3D175", "M4D175", "M5D175", "M6D175")
 ps <- prune_samples(!(sample_names(ps) %in% outliers), ps)
 ```
 
-
-
 ```{r echo=T, message=F, warning=F}
 which(!rowSums(otu_table(ps)) > 1000)
 ```
-
-
 
 ```{r, echo=T, message=F, warning=F}
 ps <- prune_samples(rowSums(otu_table(ps)) > 1000, ps)
 pslog <- transform_sample_counts(ps, function(x) log(1 + x))
 ```
-
-
 
 ```{r echo=T, message=F, warning=F}
 out.pcoa.log <- ordinate(pslog,  method = "MDS", distance = "bray")
@@ -483,7 +444,9 @@ plot_ordination(pslog, out.pcoa.log, color = "age_binned",
   coord_fixed(sqrt(evals[2] / evals[1]))
 ```
 
+Here we see that the effect of age is fairly consistent between the all the mice, irrespective of the gender and litter. 
 
+We also look at double principal coordinates analysis (DPCoA) which gives a biplot representation of both samples and taxonomic categories. 
 
 ```{r, echo=T, message=F, warning=F}
 out.dpcoa.log <- ordinate(pslog, method = "DPCoA")
@@ -494,14 +457,11 @@ plot_ordination(pslog, out.dpcoa.log, color = "age_binned", label= "SampleID",
   coord_fixed(sqrt(evals[2] / evals[1]))
 ```
 
-
-
 ```{r echo=T, message=F, warning=F}
 plot_ordination(pslog, out.dpcoa.log, type = "species", color = "Phylum") +
   coord_fixed(sqrt(evals[2] / evals[1]))
 ```
-
-
+Here we see the results of PCoA with weighted unifrac, where we see second axis is associated with age effect, however, this does not take abundance into account. 
 
 ```{r, echo=T, message=F, warning=F}
 out.wuf.log <- ordinate(pslog, method = "PCoA", distance ="wunifrac")
@@ -514,19 +474,16 @@ plot_ordination(pslog, out.wuf.log, color = "age_binned",
 
 ## PCA on Ranks
 
+Because microbial abundance data is tail-heavy, it is easier to ignore abundances all together, and work with ranks instead. 
 ```{r echo=T, message=F, warning=F}
 abund <- otu_table(pslog)
 abund_ranks <- t(apply(abund, 1, rank))
 ```
 
-
-
 ```{r, echo=T, message=F, warning=F}
 abund_ranks <- abund_ranks - 329
 abund_ranks[abund_ranks < 1] <- 1
 ```
-
-
 
 ```{r echo=T, message=F, warning=F}
 abund_df <- melt(abund, value.name = "abund") %>%
@@ -546,7 +503,7 @@ ggplot(abund_df %>%
   scale_color_brewer(palette = "Set2")
 ```
 
-
+This is rank thershold transformation. 
 
 ```{r, echo=T, message=F, warning=F}
 ranks_pca <- dudi.pca(abund_ranks, scannf = F, nf = 3)
@@ -568,8 +525,6 @@ col_scores <- col_scores %>%
   left_join(tax)
 ```
 
-
-
 ```{r echo=T, message=FALSE, warning=FALSE}
 evals_prop <- 100 * (ranks_pca$eig / sum(ranks_pca$eig))
 ggplot() +
@@ -586,14 +541,14 @@ ggplot() +
   # theme(panel.border = element_rect(color = "#787878", fill = alpha("white", 0)))
   theme_minimal()
 ```
+We performed the PCA and the result is similar to PCoA without applying truncated ranking transformation, proving the infalliability of our analysis of the original data. 
 
-# Cannonical correspondance
+# Cannonical correspondance: 
+Canonical Correspondence Analysis (CCpnA) is a method used for ordinating species by sample tables while integrating additional information about the samples. Just as in previous methods, the aim of generating biplots is to discern the predominant types of bacterial communities across various mouse sample types. 
 
 ```{r, echo=T, message=F, warning=F}
 ps_ccpna <- ordinate(pslog, "CCA", formula = pslog ~ age_binned + family_relationship)
 ```
-
-
 
 ```{r echo=T, message=F, warning=F}
 library(ggrepel)
@@ -628,7 +583,7 @@ ggplot() +
 ```
 
 # Supervised learning
-
+We attempt to apply supervised learning to try and predict age from the microbiome composition. 
 ```{r, echo=T, message=F, warning=F}
 library(caret)
 sample_data(pslog)$age2 <- cut(sample_data(pslog)$age, c(0, 100, 400))
@@ -648,8 +603,7 @@ plsFit <- train(age ~ ., data = training,
 plsClasses <- predict(plsFit, newdata = testing)
 table(plsClasses, testing$age)
 ```
-
-
+Random forests can be tried too. 
 
 ```{r, echo=T, message=F, warning=F}
 library(randomForest)
@@ -658,8 +612,6 @@ rfFit <- train(age ~ ., data = training, method = "rf",
 rfClasses <- predict(rfFit, newdata = testing)
 table(rfClasses, testing$age)
 ```
-
-
 
 ```{r echo=T, message=F, warning=F}
 pls_biplot <- list("loadings" = loadings(plsFit$finalModel),
@@ -679,8 +631,6 @@ class(pls_biplot$loadings) <- "matrix"
 pls_biplot$loadings <- data.frame(tax, pls_biplot$loadings)
 ```
 
-
-
 ```{r, echo=T, message=F, warning=F}
 ggplot() +
   geom_point(data = pls_biplot$scores,
@@ -695,8 +645,7 @@ ggplot() +
   # theme(panel.border = element_rect(color = "#787878", fill = alpha("white", 0)))
   theme_minimal()
 ```
-
-
+Random forests classify with bootstrap procedure. The distance is measured by how ofte same sample occurs in the same partition. The resulting distance is then inserted into PCoA.
 
 ```{r echo=T, message=F, warning=F}
 rf_prox <- cmdscale(1 - rfFit$finalModel$proximity) %>%
@@ -709,11 +658,15 @@ ggplot(rf_prox) +
   guides(col = guide_legend(override.aes = list(size = 4))) +
   labs(col = "Binned Age", x = "Axis1", y = "Axis2")
 ```
-
-
+Here the class seperation is fairly distinct. Manually selecting the points can give more information about the samples that were difficult to classify. For example the old aged samples have not shown any clear clustering together. There are also very few samples of older than 200 days. 
 
 ``` {r, echo=T, message=F, warning=F}
 as.vector(tax_table(ps)[which.max(importance(rfFit$finalModel)), c("Family", "Genus")])
+```
+
+To identify which species has most influence on the random forest model, we ran the last snippet and found that *Roseburia* from family Lachnospiraceae is the most abundant. Below, we plot it's abundance across the samples. 
+
+``` {r, echo=T, message=F, warning=F}
 impOtu <- as.vector(otu_table(pslog)[,which.max(importance(rfFit$finalModel))])
 maxImpDF <- data.frame(sample_data(pslog), abund = impOtu)
 ggplot(maxImpDF) +   geom_histogram(aes(x = abund)) +
@@ -721,37 +674,40 @@ ggplot(maxImpDF) +   geom_histogram(aes(x = abund)) +
   labs(x = "Abundance of discriminative bacteria", y = "Number of samples")
 ```
 
-
-
 ```{r, echo=T, message=F, warning=F}
 
 net <- make_network(ps, max.dist=0.35, keep.isolates = FALSE)
 sampledata <- data.frame(sample_data(ps))
 V(net)$id <- sampledata[names(V(net)), "host_subject_id"]
 V(net)$litter <- sampledata[names(V(net)), "family_relationship"]
-# 
-# ggplot(net, aes(x = x, y = y, xend = xend, yend = yend), layout = "fruchtermanreingold") +
-#   geom_edges(color = "darkgray") +
-#   geom_nodes(aes(color = id, shape = litter),  size = 3 ) +
-#   theme(axis.text = element_blank(), axis.title = element_blank(),
-#         legend.key.height = unit(0.5,"line")) +
-#   guides(col = guide_legend(override.aes = list(size = .5)))
+
+ggplot(net, aes(x = x, y = y, xend = xend, yend = yend)) +
+  geom_edges(color = "darkgray") +
+  geom_nodes(aes(color = id, shape = litter),  size = 3 ) +
+  theme(axis.text = element_blank(), axis.title = element_blank(),
+        legend.key.height = unit(0.5,"line")) +
+  guides(col = guide_legend(override.aes = list(size = .5)))
 ```
+In this graph, we can see that the samples are grouped based on mouse from which the sample was collected and the litter of the mouse. 
 
-
+# Graph based two-sample tests: 
+In this test, we make the minimum spanning tree (MST) based on the distance between samples and then counting the number of edges on the tree that were between samples in different groups.
 
 ```{r echo=T, message=F, warning=F}
 gt <- graph_perm_test(ps, "family_relationship", grouping = "host_subject_id",
                       distance = "jaccard", type = "mst")
 gt$pval
+```
 
+Here since the p-value is very small, we can safely say that the two samples come from different distributions.
+```{r echo=T, message=F, warning=F}
 plotNet1=plot_test_network(gt) + theme(legend.text = element_text(size = 8),
         legend.title = element_text(size = 9))
 plotPerm1=plot_permutations(gt)
 grid.arrange(ncol = 2,  plotNet1, plotPerm1)
 ```
 
-
+We see than the samples group by the litter more than we would expect by chance. 
 
 ```{r, echo=T, message=F, warning=F}
 gt <- graph_perm_test(ps, "family_relationship", grouping = "host_subject_id",
@@ -762,9 +718,9 @@ plotNet2=plot_test_network(gt) + theme(legend.text = element_text(size = 8),
 plotPerm2=plot_permutations(gt)
 grid.arrange(ncol = 2,  plotNet2, plotPerm2)
 ```
+The *k*-nearest neighbour graph also reinforces that the samples are grouping by litter. 
 
-
-
+# Linear Modelling:
 ```{r echo=T, message=F, warning=F}
 ps_alpha_div <- estimate_richness(ps, split = TRUE, measure = "Shannon")
 ps_alpha_div$SampleID <- rownames(ps_alpha_div) %>%
@@ -786,14 +742,10 @@ ps_samp$host_subject_id <- factor(ps_samp$host_subject_id)
 #                                  diversity_means$host_subject_id)
 ```
 
-
-
 ```{r echo=T, message=F, warning=F}
 alpha_div_model <- lme(fixed = alpha_diversity ~ age_binned, data = ps_samp,
                        random = ~ 1 | host_subject_id)
 ```
-
-
 
 ```{r echo=T, message=F, warning=F}
 new_data <- expand.grid(host_subject_id = levels(ps_samp$host_subject_id),
@@ -804,8 +756,6 @@ X <- model.matrix(eval(eval(alpha_div_model$call$fixed)[-2]),
 pred_var_fixed <- diag(X %*% alpha_div_model$varFix %*% t(X))
 new_data$pred_var <- pred_var_fixed + alpha_div_model$sigma ^ 2
 ```
-
-
 
 ```{r echo=T, message=F, warning=F}
 # fitted values, with error bars
@@ -823,335 +773,8 @@ ggplot(ps_samp %>% left_join(new_data)) +
   theme(axis.text.x = element_text(angle = -90, size = 6),
         axis.text.y = element_text(size = 6))
 ```
-
-
-
-```{r echo=T, message=F, warning=F}
-#New version of DESeq2 needs special levels
-sample_data(ps)$age_binned <- cut(sample_data(ps)$age,
-                          breaks = c(0, 100, 200, 400))
-levels(sample_data(ps)$age_binned) <- list(Young100="(0,100]", Mid100to200="(100,200]", Old200="(200,400]")
-sample_data(ps)$family_relationship = gsub(" ", "", sample_data(ps)$family_relationship)
-ps_dds <- phyloseq_to_deseq2(ps, design = ~ age_binned + family_relationship)
-
-# geometric mean, set to zero when all coordinates are zero
-geo_mean_protected <- function(x) {
-  if (all(x == 0)) {
-    return (0)
-  }
-  exp(mean(log(x[x != 0])))
-}
-
-geoMeans <- apply(counts(ps_dds), 1, geo_mean_protected)
-ps_dds <- estimateSizeFactors(ps_dds, geoMeans = geoMeans)
-ps_dds <- estimateDispersions(ps_dds)
-abund <- getVarianceStabilizedData(ps_dds)
-```
-
-
-
-```{r echo=T, message=F, warning=F}
-short_names <- substr(rownames(abund), 1, 5)%>%
-  make.names(unique = TRUE)
-rownames(abund) <- short_names
-```
-
-
-
-```{r echo=T, message=F, warning=F}
-abund_sums <- rbind(data.frame(sum = colSums(abund),
-                               sample = colnames(abund),
-                               type = "DESeq2"),
-                    data.frame(sum = rowSums(otu_table(pslog)),
-                               sample = rownames(otu_table(pslog)),
-                               type = "log(1 + x)"))
-
-ggplot(abund_sums) +
-  geom_histogram(aes(x = sum), binwidth = 20) +
-  facet_grid(type ~ .) +
-  xlab("Total abundance within sample")
-```
-
-# Hierarcheal multi-testing:
-
-```{r echo=T, message=F, warning=F}
-el <- phy_tree(pslog)$edge
-el0 <- el
-el0 <- el0[nrow(el):1, ]
-el_names <- c(short_names, seq_len(phy_tree(pslog)$Nnode))
-el[, 1] <- el_names[el0[, 1]]
-el[, 2] <- el_names[as.numeric(el0[, 2])]
-unadj_p <- treePValues(el, abund, sample_data(pslog)$age_binned)
-
-hfdr_res <- hFDR.adjust(unadj_p, el, .75)
-summary(hfdr_res)
-
-#interactive part: not run
-plot(hfdr_res, height = 5000) # opens in a browser
-
-
-tax <- tax_table(pslog)[, c("Family", "Genus")] %>%
-  data.frame()
-tax$seq <- short_names
-
-options(digits=3)
-hfdr_res@p.vals$seq <- rownames(hfdr_res@p.vals)
-tax %>%
-  left_join(hfdr_res@p.vals) %>%
-  arrange(adjp) %>% head(10)
-```
-
-# Multitable techniques:
-
-```{r echo=T, message=F, warning=F}
-metab <- read.csv("https://raw.githubusercontent.com/spholmes/F1000_workflow/master/data/metabolites.csv",row.names = 1)
-microbe_connect <-url("https://raw.githubusercontent.com/spholmes/F1000_workflow/master/data/microbe.rda")
-load(microbe_connect)
-microbe
-```
-
-
-
-```{r echo=T, message=F, warning=F}
-keep_ix <- rowSums(metab == 0) <= 3
-metab <- metab[keep_ix, ]
-microbe <- prune_taxa(taxa_sums(microbe) > 4, microbe)
-microbe <- filter_taxa(microbe, filterfun(kOverA(3, 2)), TRUE)
-metab <- log(1 + metab, base = 10)
-X <- otu_table(microbe)
-X[X > 50] <- 50
-dim(X)
-
-dim(metab)
-```
-
-
-
-```{r echo=T, message=F, warning=F}
-# cca_res <- CCA(t(X),  t(metab), penaltyx = .15, penaltyz = .15)
-# cca_res
-# 
-# combined <- cbind(t(X[cca_res$u != 0, ]),
-#                   t(metab[cca_res$v != 0, ]))
-# pca_res <- dudi.pca(combined, scannf = F, nf = 3)
-# 
-# 
-# genotype <- substr(rownames(pca_res$li), 1, 2)
-# sample_type <- substr(rownames(pca_res$l1), 3, 4)
-# feature_type <- grepl("\\.", colnames(combined))
-# feature_type <- ifelse(feature_type, "Metabolite", "OTU")
-# sample_info <- data.frame(pca_res$li, genotype, sample_type)
-# feature_info <- data.frame(pca_res$c1,
-#                            feature = substr(colnames(combined), 1, 6))
-# 
-# ggplot() +  geom_point(data = sample_info,
-#             aes(x = Axis1, y = Axis2, col = sample_type, shape = genotype), size = 3) +
-#   geom_label_repel(data = feature_info,
-#                    aes(x = 5.5 * CS1, y = 5.5 * CS2, label = feature, fill = feature_type),
-#                    size = 2, segment.size = 0.3,
-#                    label.padding = unit(0.1, "lines"), label.size = 0) +
-#   geom_point(data = feature_info,
-#              aes(x = 5.5 * CS1, y = 5.5 * CS2, fill = feature_type),
-#              size = 1, shape = 23, col = "#383838") +
-#   scale_color_brewer(palette = "Set2") +
-#   scale_fill_manual(values = c("#a6d854", "#e78ac3")) +
-#   guides(fill = guide_legend(override.aes = list(shape = 32, size = 0))) +
-#   coord_fixed(sqrt(pca_res$eig[2] / pca_res$eig[2])) +
-#   labs(x = sprintf("Axis1 [%s%% Variance]",
-#                    100 * round(pca_res$eig[1] / sum(pca_res$eig), 2)),
-#        y = sprintf("Axis2 [%s%% Variance]",
-#                    100 * round(pca_res$eig[2] / sum(pca_res$eig), 2)),
-#        fill = "Feature Type", col = "Sample Type")
-```
-
-
+Here we see how a single measure of the community structure is associated with the sample characteristics. We can see how the microbial community diversity reflects the environment. 
 
 ```{r echo=T, message=F, warning=F}
 sessionInfo()
-```
-
-
-
-```{r echo=T, message=F, warning=F}
-
-```
-
-
-
-```{r echo=T, message=F, warning=F}
-
-```
-
-
-
-```{r echo=T, message=F, warning=F}
-
-```
-
-
-
-```{r echo=T, message=F, warning=F}
-
-```
-
-
-
-```{r echo=T, message=F, warning=F}
-
-```
-
-
-
-```{r echo=T, message=F, warning=F}
-
-```
-
-
-
-```{r echo=T, message=F, warning=F}
-
-```
-
-
-
-```{r echo=T, message=F, warning=F}
-
-```
-
-
-
-```{r echo=T, message=F, warning=F}
-
-```
-
-
-
-```{r echo=T, message=F, warning=F}
-
-```
-
-
-
-```{r echo=T, message=F, warning=F}
-
-```
-
-
-
-```{r echo=T, message=F, warning=F}
-
-```
-
-
-
-```{r echo=T, message=F, warning=F}
-
-```
-
-
-
-```{r echo=T, message=F, warning=F}
-
-```
-
-
-
-```{r echo=T, message=F, warning=F}
-
-```
-
-
-
-```{r echo=T, message=F, warning=F}
-
-```
-
-
-
-```{r echo=T, message=F, warning=F}
-
-```
-
-
-
-```{r echo=T, message=F, warning=F}
-
-```
-
-
-
-```{r echo=T, message=F, warning=F}
-
-```
-
-
-
-```{r echo=T, message=F, warning=F}
-
-```
-
-
-
-```{r echo=T, message=F, warning=F}
-
-```
-
-
-
-```{r echo=T, message=F, warning=F}
-
-```
-
-
-
-```{r echo=T, message=F, warning=F}
-
-```
-
-
-
-```{r echo=T, message=F, warning=F}
-
-```
-
-
-
-```{r echo=T, message=F, warning=F}
-
-```
-
-
-
-```{r echo=T, message=F, warning=F}
-
-```
-
-
-
-```{r echo=T, message=F, warning=F}
-
-```
-
-
-
-```{r echo=T, message=F, warning=F}
-
-```
-
-
-
-```{r echo=T, message=F, warning=F}
-
-```
-
-
-
-```{r echo=T, message=F, warning=F}
-
-```
-
-
-
-```{r echo=T, message=F, warning=F}
-
 ```
